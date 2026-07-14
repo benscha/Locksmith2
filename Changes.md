@@ -81,10 +81,6 @@ Dashboard table projection now separates:
 - `Private/Set/Set-CADisableExtensionList.ps1`
 
 ## 5) Product assets/config added
-### Added XML policy files
-- `tamemycertxml/FHNWSCEPClientAuthIntune.xml`
-- `tamemycertxml/FHNWSCEPUserAuthIntune.xml`
-
 ### Added sample export artifact
 - `sample.xml`
 
