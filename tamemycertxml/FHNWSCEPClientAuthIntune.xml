@@ -1,0 +1,39 @@
+<CertificateRequestPolicy xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+<AuditOnly>true</AuditOnly>
+  <Subject>
+    <SubjectRule>
+      <Field>commonName</Field>
+      <Mandatory>true</Mandatory>
+      <Patterns>
+        <Pattern>
+          <Expression>^CLN\-[a-zA-Z0-9]{4,11}$</Expression>
+        </Pattern>
+      </Patterns>
+    </SubjectRule>
+  </Subject>
+  <SubjectAlternativeName>
+    <SubjectRule>
+      <Field>userPrincipalName</Field>
+      <Mandatory>true</Mandatory>
+      <Patterns>
+        <Pattern>
+          <Expression>^CLN\-[a-zA-Z0-9]{4,11}$</Expression>
+        </Pattern>
+      </Patterns>
+    </SubjectRule>
+    <SubjectRule>
+      <Field>uniformResourceIdentifier</Field>
+      <Mandatory>true</Mandatory>
+      <MaxOccurrences>2</MaxOccurrences>
+      <Patterns>
+        <Pattern>
+          <Expression>^ID:Microsoft Endpoint Manager:GUID[a-z0-9\-]{36}$</Expression>
+        </Pattern>
+        <Pattern>
+          <Expression>^ID:(STU|STA|EXP)$</Expression>
+        </Pattern>
+      </Patterns>
+    </SubjectRule>
+  </SubjectAlternativeName>
+</CertificateRequestPolicy>

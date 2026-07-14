@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
     Shared test helpers for Locksmith2 Pester tests.
@@ -7,7 +7,7 @@
     Provides mock factory functions for LS2AdcsObject, LS2Issue, and LS2Principal,
     and a PSScriptAnalyzer helper. Import this module in BeforeAll blocks:
 
-        Import-Module (Join-Path $PSScriptRoot '..' 'Shared' 'TestHelpers.psm1') -Force
+        Import-Module (Join-Path $ModuleRoot 'Tests\Shared\TestHelpers.psm1') -Force
 
 .NOTES
     LS2AdcsObject and LS2Principal have AD-dependent constructors. Tests bypass them
@@ -147,6 +147,8 @@ function New-MockLS2Issue {
         Issue             = 'Test issue description.'
         Fix               = '# Fix script'
         Revert            = '# Revert script'
+        TamemyCertHardening        = $false
+        TamemyCertHardeningSummary = 'No TamemyCert XML was found for this template.'
     }
 
     foreach ($key in $Overrides.Keys) {

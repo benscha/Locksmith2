@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 # Integration tests — require a live AD CS environment.
 # Set $env:LS2_TEST_FOREST to enable all integration tests.
 # Set $env:LS2_TEST_CA_HOST to target a specific CA host (e.g., 'ca1.contoso.com').
@@ -6,11 +6,13 @@
 
 BeforeDiscovery {
     $ModuleRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-    Import-Module (Join-Path $ModuleRoot 'Locksmith2.psd1') -Force -ErrorAction Stop
+    $ls2Manifest = if ($env:LS2_MODULE_ROOT) { Join-Path $env:LS2_MODULE_ROOT 'Locksmith2.psd1' } else { Join-Path $ModuleRoot 'Locksmith2.psd1' }
+    Import-Module $ls2Manifest -Force -ErrorAction Stop
 }
 BeforeAll {
     $ModuleRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-    Import-Module (Join-Path $ModuleRoot 'Locksmith2.psd1') -Force -ErrorAction Stop
+    $ls2Manifest = if ($env:LS2_MODULE_ROOT) { Join-Path $env:LS2_MODULE_ROOT 'Locksmith2.psd1' } else { Join-Path $ModuleRoot 'Locksmith2.psd1' }
+    Import-Module $ls2Manifest -Force -ErrorAction Stop
 
     $script:TestForest = $env:LS2_TEST_FOREST
     $script:TestCaHost = $env:LS2_TEST_CA_HOST

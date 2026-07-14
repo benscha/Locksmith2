@@ -1,11 +1,13 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 BeforeDiscovery {
     $ModuleRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
-    Import-Module (Join-Path $ModuleRoot 'Locksmith2.psd1') -Force -ErrorAction Stop
+    $ls2Manifest = if ($env:LS2_MODULE_ROOT) { Join-Path $env:LS2_MODULE_ROOT 'Locksmith2.psd1' } else { Join-Path $ModuleRoot 'Locksmith2.psd1' }
+    Import-Module $ls2Manifest -Force -ErrorAction Stop
 }
 BeforeAll {
     $ModuleRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
-    Import-Module (Join-Path $ModuleRoot 'Locksmith2.psd1') -Force -ErrorAction Stop
+    $ls2Manifest = if ($env:LS2_MODULE_ROOT) { Join-Path $env:LS2_MODULE_ROOT 'Locksmith2.psd1' } else { Join-Path $ModuleRoot 'Locksmith2.psd1' }
+    Import-Module $ls2Manifest -Force -ErrorAction Stop
 }
 
 InModuleScope 'Locksmith2' {
@@ -19,6 +21,8 @@ InModuleScope 'Locksmith2' {
                     DistinguishedName = 'CN=TestTemplate,CN=Certificate Templates,CN=Public Key Services,CN=Services,CN=Configuration,DC=contoso,DC=com'
                     ObjectClass       = 'pKICertificateTemplate'
                     IdentityReference = 'Everyone'
+                    TamemyCertHardening = $true
+                    TamemyCertHardeningSummary = 'Subject common name is restricted.'
                     Issue             = 'Template allows SAN'
                     Fix               = 'Disable SAN flag'
                     Revert            = 'Enable SAN flag'
@@ -38,6 +42,8 @@ InModuleScope 'Locksmith2' {
 
         BeforeEach {
             Mock 'Write-Host' { }
+            Mock 'Format-Table' { }
+            Mock 'Format-List' { }
         }
 
         It 'should not throw in Mode 0' {
@@ -56,6 +62,16 @@ InModuleScope 'Locksmith2' {
         It 'should call Write-Host at least once in Mode 1' {
             Show-IssueReport -Issues $script:testIssues -Mode 1
             Should -Invoke 'Write-Host' -Times 1 -Exactly:$false
+        }
+
+        It 'should include TamemyCert columns for template issues in Mode 0' {
+            Show-IssueReport -Issues $script:testIssues -Mode 0
+            Should -Invoke 'Format-Table' -Times 1 -ParameterFilter { $Property -contains 'TamemyCertHardening' -and $Property -contains 'TamemyCertHardeningSummary' }
+        }
+
+        It 'should include TamemyCert columns for template issues in Mode 1' {
+            Show-IssueReport -Issues $script:testIssues -Mode 1
+            Should -Invoke 'Format-List' -Times 1 -ParameterFilter { $Property -contains 'TamemyCertHardening' -and $Property -contains 'TamemyCertHardeningSummary' }
         }
 
         It 'should throw when Issues array is empty (empty strongly-typed array cannot bind)' {

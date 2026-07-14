@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LocksmithReport>
+  <GeneratedAt>2026-07-13</GeneratedAt>
+  <Templates>
+    <Template>
+      <Name>FHNWSCEPClientAuthIntune</Name>
+      <TamemyCertHardening>true</TamemyCertHardening>
+      <TamemyCertXmlName>FHNWSCEPClientAuthIntune.xml</TamemyCertXmlName>
+      <TamemyCertHardeningSummary>Audit-only mode is enabled. Subject common name is mandatory and restricted by regex rules. Subject alternative name user principal name is mandatory and restricted by regex rules. Subject alternative name uniform resource identifier is mandatory, limited to 2 occurrence(s), and restricted by regex rules.</TamemyCertHardeningSummary>
+    </Template>
+    <Template>
+      <Name>FHNWSCEPUserAuthIntune</Name>
+      <TamemyCertHardening>true</TamemyCertHardening>
+      <TamemyCertXmlName>FHNWSCEPUserAuthIntune.xml</TamemyCertXmlName>
+      <TamemyCertHardeningSummary>Audit-only mode is disabled. Subject common name is mandatory and restricted by regex rules. Subject emailAddress is mandatory and restricted by regex rules. Subject alternative name user principal name is mandatory and restricted by regex rules.</TamemyCertHardeningSummary>
+    </Template>
+  </Templates>
+</LocksmithReport>

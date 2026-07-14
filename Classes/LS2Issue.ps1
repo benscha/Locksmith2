@@ -1,4 +1,4 @@
-class LS2Issue {
+﻿class LS2Issue {
     # Core issue identification
     [string]$Technique              # ESC1, ESC2, ESC6, etc.
     [string]$Forest                 # Forest where issue was found
@@ -17,6 +17,9 @@ class LS2Issue {
     # Template-specific properties
     [Nullable[bool]]$Enabled        # Whether template is enabled on any CA
     [string[]]$EnabledOn            # List of CAs where template is enabled
+    [Nullable[bool]]$TamemyCertHardening  # Whether a TamemyCert XML exists for this template
+    [string]$TamemyCertHardeningXmlName   # Matched TamemyCert XML file name
+    [string]$TamemyCertHardeningSummary   # Human-readable hardening summary
     
     # CA-specific properties
     [string]$CAFullName             # For CA issues: SERVER\CA
@@ -32,6 +35,15 @@ class LS2Issue {
     [string]$Issue                  # Description of the vulnerability
     [string]$Fix                    # PowerShell script to remediate
     [string]$Revert                 # PowerShell script to undo remediation
+
+    # Risk rating (populated by Set-LS2RiskRating)
+    [Nullable[int]]$RiskValue       # Numeric risk score
+    [string]$RiskName               # Informational / Low / Medium / High / Critical
+    [string[]]$RiskScoring          # Audit trail of each modifier applied
+
+    # ESC8 endpoint metadata (populated by Find-LS2VulnerableCA)
+    [string]$EndpointURL            # Full URL of the ESC8 endpoint
+    [string]$EndpointAttackVector   # HTTP / HTTPS-NTLM / HTTPS-Kerberos
     
     # Constructor for creating issues from hashtable
     LS2Issue([hashtable]$Properties) {
@@ -53,6 +65,9 @@ class LS2Issue {
         # Template properties (may be null for CA issues)
         $this.Enabled = $Properties.Enabled
         $this.EnabledOn = $Properties.EnabledOn
+        $this.TamemyCertHardening = $Properties.TamemyCertHardening
+        $this.TamemyCertHardeningXmlName = $Properties.TamemyCertHardeningXmlName
+        $this.TamemyCertHardeningSummary = $Properties.TamemyCertHardeningSummary
         
         # CA properties (may be null for template issues)
         $this.CAFullName = $Properties.CAFullName
@@ -65,15 +80,26 @@ class LS2Issue {
         $this.Issue = $Properties.Issue
         $this.Fix = $Properties.Fix
         $this.Revert = $Properties.Revert
+
+        # Risk rating
+        $this.RiskValue = $Properties.RiskValue
+        $this.RiskName = $Properties.RiskName
+        $this.RiskScoring = $Properties.RiskScoring
+
+        # ESC8 endpoint metadata
+        $this.EndpointURL = $Properties.EndpointURL
+        $this.EndpointAttackVector = $Properties.EndpointAttackVector
     }
     
     # Method to get a friendly identifier for the issue
     [string] GetIdentifier() {
         if ($this.IdentityReference) {
             return "$($this.Technique): $($this.Name) - $($this.IdentityReference)"
-        } elseif ($this.Owner) {
+        }
+        elseif ($this.Owner) {
             return "$($this.Technique): $($this.Name) - Owner: $($this.Owner)"
-        } else {
+        }
+        else {
             return "$($this.Technique): $($this.Name)"
         }
     }

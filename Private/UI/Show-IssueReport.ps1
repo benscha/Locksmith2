@@ -1,4 +1,4 @@
-function Show-IssueReport {
+﻿function Show-IssueReport {
     <#
         .SYNOPSIS
         Displays discovered AD CS issues in console based on specified mode.
@@ -60,50 +60,110 @@ function Show-IssueReport {
         # Sort and group issues by technique
         $sortedIssues = $Issues | Sort-Object Technique, Name, Issue
         $issuesByTechnique = $sortedIssues | Group-Object -Property Technique | Sort-Object Name
+        $templateTechniques = @('ESC1', 'ESC2', 'ESC3c1', 'ESC3c2', 'ESC4a', 'ESC4o', 'ESC9', 'ESC13', 'ESC15', 'SchemaV1')
+
+        function Format-TamemyCertHardeningValue {
+            param(
+                [Parameter(Mandatory)]
+                [LS2Issue]$Issue
+            )
+
+            if ($Issue.TamemyCertHardening -eq $true) {
+                return 'True'
+            }
+
+            if ($Issue.TamemyCertHardening -eq $false) {
+                return 'False'
+            }
+
+            return 'N/A'
+        }
+
+        # Prints the magenta technique banner shared by both display modes.
+        function Write-TechniqueHeader {
+            param(
+                [Parameter(Mandatory)]
+                [string]$Title
+            )
+
+            Write-Host ""
+            Write-Host "$('-' * ($Title.Length + 10))" -ForegroundColor Black -BackgroundColor Magenta -NoNewline; Write-Host
+            Write-Host "     " -BackgroundColor Magenta -NoNewline
+            Write-Host $Title -BackgroundColor Magenta -ForegroundColor Black -NoNewline
+            Write-Host "     " -BackgroundColor Magenta -NoNewline; Write-Host
+            Write-Host "$('-' * ($Title.Length + 10))" -ForegroundColor Black -BackgroundColor Magenta -NoNewline; Write-Host
+            Write-Host ""
+        }
+
+        # Builds the display object for one issue. Shared by both modes so the
+        # TamemyCert/Fix/Revert projection logic exists in exactly one place.
+        function New-IssueDisplayObject {
+            param(
+                [Parameter(Mandatory)]
+                [LS2Issue]$Issue,
+
+                [Parameter(Mandatory)]
+                [bool]$IsTemplateTechnique,
+
+                [switch]$IncludeFixRevert
+            )
+
+            $properties = [ordered]@{ Name = $Issue.Name }
+
+            if ($IsTemplateTechnique) {
+                $properties.TamemyCertHardening = Format-TamemyCertHardeningValue -Issue $Issue
+                $properties.TamemyCertHardeningXmlName = if ($Issue.TamemyCertHardening -eq $true) { $Issue.TamemyCertHardeningXmlName } else { $null }
+                $properties.TamemyCertHardeningSummary = $Issue.TamemyCertHardeningSummary
+            }
+
+            $properties.Issue = $Issue.Issue
+
+            if ($IncludeFixRevert) {
+                $properties.Fix = if ($Issue.Fix) { $ExecutionContext.InvokeCommand.ExpandString($Issue.Fix) } else { $null }
+                $properties.Revert = if ($Issue.Revert) { $ExecutionContext.InvokeCommand.ExpandString($Issue.Revert) } else { $null }
+            }
+
+            [PSCustomObject]$properties
+        }
 
         # Display based on mode
         switch ($Mode) {
             0 {
                 # Mode 0: Table format (issues only) grouped by technique
                 Write-Host "`n[i] Locksmith discovered the following AD CS issues:`n" -ForegroundColor Cyan
-                
+
                 foreach ($group in $issuesByTechnique) {
-                    $title = "$($group.Name) Issues"
-                    Write-Host ""
-                    Write-Host "$('-' * ($title.Length + 10))" -ForegroundColor Black -BackgroundColor Magenta -NoNewline; Write-Host
-                    Write-Host "     " -BackgroundColor Magenta -NoNewline
-                    Write-Host $title -BackgroundColor Magenta -ForegroundColor Black -NoNewline
-                    Write-Host "     " -BackgroundColor Magenta -NoNewline; Write-Host
-                    Write-Host "$('-' * ($title.Length + 10))" -ForegroundColor Black -BackgroundColor Magenta -NoNewline; Write-Host
-                    Write-Host ""
-                    $group.Group | Format-Table -Property Name, Issue -Wrap
+                    Write-TechniqueHeader -Title "$($group.Name) Issues"
+                    $isTemplateTechnique = $group.Name -in $templateTechniques
+                    if ($isTemplateTechnique) {
+                        $displayIssues = foreach ($issue in $group.Group) {
+                            New-IssueDisplayObject -Issue $issue -IsTemplateTechnique $true
+                        }
+                        $displayIssues | Format-Table -Property Name, TamemyCertHardening, TamemyCertHardeningXmlName, TamemyCertHardeningSummary, Issue -Wrap
+                    }
+                    else {
+                        $group.Group | Format-Table -Property Name, Issue -Wrap
+                    }
                 }
             }
             1 {
                 # Mode 1: List format (issues with fix scripts) grouped by technique
                 Write-Host "`n[i] Locksmith discovered the following AD CS issues:`n" -ForegroundColor Cyan
-                
+
                 foreach ($group in $issuesByTechnique) {
-                    $title = "$($group.Name) Issues"
-                    Write-Host ""
-                    Write-Host "$('-' * ($title.Length + 10))" -ForegroundColor Black -BackgroundColor Magenta -NoNewline; Write-Host
-                    Write-Host "     " -BackgroundColor Magenta -NoNewline
-                    Write-Host $title -BackgroundColor Magenta -ForegroundColor Black -NoNewline
-                    Write-Host "     " -BackgroundColor Magenta -NoNewline; Write-Host
-                    Write-Host "$('-' * ($title.Length + 10))" -ForegroundColor Black -BackgroundColor Magenta -NoNewline; Write-Host
-                    Write-Host ""
-                    
-                    # Create display objects with properly formatted strings
+                    Write-TechniqueHeader -Title "$($group.Name) Issues"
+                    $isTemplateTechnique = $group.Name -in $templateTechniques
+
                     $displayIssues = foreach ($issue in $group.Group) {
-                        [PSCustomObject]@{
-                            Name   = $issue.Name
-                            Issue  = $issue.Issue
-                            Fix    = if ($issue.Fix) { $ExecutionContext.InvokeCommand.ExpandString($issue.Fix) } else { $null }
-                            Revert = if ($issue.Revert) { $ExecutionContext.InvokeCommand.ExpandString($issue.Revert) } else { $null }
-                        }
+                        New-IssueDisplayObject -Issue $issue -IsTemplateTechnique $isTemplateTechnique -IncludeFixRevert
                     }
-                    
-                    $displayIssues | Format-List -Property Name, Issue, Fix, Revert
+
+                    if ($isTemplateTechnique) {
+                        $displayIssues | Format-List -Property Name, TamemyCertHardening, TamemyCertHardeningXmlName, TamemyCertHardeningSummary, Issue, Fix, Revert
+                    }
+                    else {
+                        $displayIssues | Format-List -Property Name, Issue, Fix, Revert
+                    }
                 }
             }
         }

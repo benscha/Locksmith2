@@ -1,10 +1,12 @@
-BeforeDiscovery {
+﻿BeforeDiscovery {
     $ModuleRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
-    Import-Module (Join-Path $ModuleRoot 'Locksmith2.psd1') -Force -ErrorAction Stop
+    $ls2Manifest = if ($env:LS2_MODULE_ROOT) { Join-Path $env:LS2_MODULE_ROOT 'Locksmith2.psd1' } else { Join-Path $ModuleRoot 'Locksmith2.psd1' }
+    Import-Module $ls2Manifest -Force -ErrorAction Stop
 }
 BeforeAll {
     $ModuleRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
-    Import-Module (Join-Path $ModuleRoot 'Locksmith2.psd1') -Force -ErrorAction Stop
+    $ls2Manifest = if ($env:LS2_MODULE_ROOT) { Join-Path $env:LS2_MODULE_ROOT 'Locksmith2.psd1' } else { Join-Path $ModuleRoot 'Locksmith2.psd1' }
+    Import-Module $ls2Manifest -Force -ErrorAction Stop
     Import-Module (Join-Path $ModuleRoot 'Tests\Shared\TestHelpers.psm1') -Force -ErrorAction Stop
 }
 
@@ -107,6 +109,27 @@ Describe 'Set-CADisableExtensionList' -Tag 'Unit' {
                 Mock Get-PSCDisableExtensionList { @() } -ParameterFilter { $CAFullName -eq 'contoso.com\MyCA' }
                 $null = $ca | Set-CADisableExtensionList
                 Should -Invoke Get-PSCDisableExtensionList -Times 1 -Exactly -ParameterFilter { $CAFullName -eq 'contoso.com\MyCA' }
+            }
+        }
+
+        Context 'Get-PSCDisableExtensionList cmdlet is unavailable' {
+            It 'should continue scan and set safe defaults when cmdlet is missing' {
+                $ca = New-MockLS2AdcsObject -Properties @{
+                    objectClass     = @('top', 'pKIEnrollmentService')
+                    SchemaClassName = 'pKIEnrollmentService'
+                    CAFullName      = 'contoso.com\MyCA'
+                    cn              = 'MyCA'
+                }
+
+                Mock Get-Command { $null } -ParameterFilter { $Name -eq 'Get-PSCDisableExtensionList' }
+                Mock Write-Warning { }
+
+                $result = $ca | Set-CADisableExtensionList
+
+                $result | Should -Not -BeNullOrEmpty
+                $result.DisableExtensionList | Should -BeNullOrEmpty
+                $result.SecurityExtensionDisabled | Should -BeFalse
+                Should -Invoke Write-Warning -Times 1
             }
         }
     }

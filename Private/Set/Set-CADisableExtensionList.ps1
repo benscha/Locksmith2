@@ -1,4 +1,4 @@
-function Set-CADisableExtensionList {
+﻿function Set-CADisableExtensionList {
     <#
     .SYNOPSIS
         Queries and stores the Disable Extension List configuration for each Certification Authority.
@@ -33,11 +33,38 @@ function Set-CADisableExtensionList {
 
     begin {
         Write-Verbose "Querying DisableExtensionList for Certification Authorities..."
-        
-        # Verify PSCertutil is available
+
+        $canQueryDisableExtensionList = $true
         if (-not (Get-Command -Name Get-PSCDisableExtensionList -ErrorAction SilentlyContinue)) {
-            Write-Error "Get-PSCDisableExtensionList cmdlet not found. Please ensure PSCertutil module is loaded."
-            return
+            $canQueryDisableExtensionList = $false
+            Write-Warning "Get-PSCDisableExtensionList cmdlet not found. Continuing scan with default DisableExtensionList values."
+        }
+
+        function Set-DisableExtensionMetadata {
+            param(
+                [Parameter(Mandatory = $true)]
+                [object]$Target,
+
+                [Parameter()]
+                [object[]]$DisableExtensionList,
+
+                [Parameter()]
+                [Nullable[bool]]$SecurityExtensionDisabled
+            )
+
+            if ($Target.PSObject.Properties['DisableExtensionList']) {
+                $Target.DisableExtensionList = $DisableExtensionList
+            }
+            else {
+                Add-Member -InputObject $Target -MemberType NoteProperty -Name 'DisableExtensionList' -Value $DisableExtensionList -Force
+            }
+
+            if ($Target.PSObject.Properties['SecurityExtensionDisabled']) {
+                $Target.SecurityExtensionDisabled = $SecurityExtensionDisabled
+            }
+            else {
+                Add-Member -InputObject $Target -MemberType NoteProperty -Name 'SecurityExtensionDisabled' -Value $SecurityExtensionDisabled -Force
+            }
         }
     }
 
@@ -58,6 +85,13 @@ function Set-CADisableExtensionList {
 
                 Write-Verbose "  Querying DisableExtensionList for: $caFullName"
 
+                if (-not $canQueryDisableExtensionList) {
+                    Set-DisableExtensionMetadata -Target $_ -DisableExtensionList @() -SecurityExtensionDisabled $false
+                    Write-Verbose "  PSCertutil cmdlet unavailable; applied defaults for DisableExtensionList"
+                    $_
+                    return
+                }
+
                 # Query DisableExtensionList using PSCertutil
                 $disableExtensionListResult = Get-PSCDisableExtensionList -CAFullName $caFullName -ErrorAction Stop
                 
@@ -75,27 +109,27 @@ function Set-CADisableExtensionList {
                     
                     if ($securityExtensionDisabled) {
                         Write-Verbose "  CRITICAL: Security extension (1.3.6.1.4.1.311.25.2) is DISABLED"
-                    } else {
+                    }
+                    else {
                         Write-Verbose "  Security extension (1.3.6.1.4.1.311.25.2) is enabled"
                     }
                     
                     # Set properties directly on the LS2AdcsObject (same reference as store)
-                    $_.DisableExtensionList = $disabledExtensions
-                    $_.SecurityExtensionDisabled = $securityExtensionDisabled
+                    Set-DisableExtensionMetadata -Target $_ -DisableExtensionList $disabledExtensions -SecurityExtensionDisabled $securityExtensionDisabled
                     Write-Verbose "  Updated $($_.distinguishedName) with DisableExtensionList and SecurityExtensionDisabled"
-                } else {
+                }
+                else {
                     # No extensions disabled - set directly
                     Write-Verbose "  No extensions disabled on this CA"
-                    $_.DisableExtensionList = @()
-                    $_.SecurityExtensionDisabled = $false
+                    Set-DisableExtensionMetadata -Target $_ -DisableExtensionList @() -SecurityExtensionDisabled $false
                     Write-Verbose "  Updated $($_.distinguishedName) with empty DisableExtensionList"
                 }
-            } catch {
+            }
+            catch {
                 Write-Verbose "  Failed to query DisableExtensionList for '$caFullName': $($_.Exception.Message)"
                 
                 # Set to null on error
-                $_.DisableExtensionList = $null
-                $_.SecurityExtensionDisabled = $null
+                Set-DisableExtensionMetadata -Target $_ -DisableExtensionList $null -SecurityExtensionDisabled $null
             }
             
             # Always return the object to continue the pipeline

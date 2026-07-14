@@ -1,11 +1,13 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 BeforeDiscovery {
     $ModuleRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-    Import-Module (Join-Path $ModuleRoot 'Locksmith2.psd1') -Force -ErrorAction Stop
+    $ls2Manifest = if ($env:LS2_MODULE_ROOT) { Join-Path $env:LS2_MODULE_ROOT 'Locksmith2.psd1' } else { Join-Path $ModuleRoot 'Locksmith2.psd1' }
+    Import-Module $ls2Manifest -Force -ErrorAction Stop
 }
 BeforeAll {
     $ModuleRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-    Import-Module (Join-Path $ModuleRoot 'Locksmith2.psd1') -Force -ErrorAction Stop
+    $ls2Manifest = if ($env:LS2_MODULE_ROOT) { Join-Path $env:LS2_MODULE_ROOT 'Locksmith2.psd1' } else { Join-Path $ModuleRoot 'Locksmith2.psd1' }
+    Import-Module $ls2Manifest -Force -ErrorAction Stop
     Import-Module (Join-Path $ModuleRoot 'Tests\Shared\TestHelpers.psm1') -Force -ErrorAction Stop
 }
 
@@ -97,6 +99,12 @@ InModuleScope 'Locksmith2' {
                     [System.Security.Principal.NTAccount]::new('Everyone')
                 }
                 Mock 'Test-IssueExists' { $false }
+                Mock 'Get-TamemyCertHardening' {
+                    [PSCustomObject]@{
+                        TamemyCertHardening        = $true
+                        TamemyCertHardeningSummary = 'Subject alternative name is restricted.'
+                    }
+                }
             }
 
             It 'should return an LS2Issue when template matches all ESC1 conditions' {
@@ -106,6 +114,16 @@ InModuleScope 'Locksmith2' {
                 $result.Count | Should -Be 1
                 $result[0].GetType().Name | Should -Be 'LS2Issue'
                 $result[0].Technique | Should -Be 'ESC1'
+                $result[0].TamemyCertHardening | Should -Be $true
+            }
+
+            It 'should include TamemyCert hardening summary data on the issue' {
+                $vulnTemplate = New-ESC1VulnerableTemplate
+                $script:AdcsObjectStore = @{ $vulnTemplate.distinguishedName = $vulnTemplate }
+
+                $result = @(Find-LS2VulnerableTemplate -Technique 'ESC1')
+
+                $result[0].TamemyCertHardeningSummary | Should -Be 'Subject alternative name is restricted.'
             }
 
             It 'should skip a template where any ESC1 condition is not met' {

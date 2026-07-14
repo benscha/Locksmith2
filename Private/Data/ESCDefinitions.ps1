@@ -1,4 +1,4 @@
-# MAINTENANCE: When adding a new ESC entry here, you MUST also:
+﻿# MAINTENANCE: When adding a new ESC entry here, you MUST also:
 #   1. Add the technique name to the [ValidateSet(...)] in the appropriate Find-LS2Vulnerable* function:
 #        - Template techniques  -> Public/Find-LS2VulnerableTemplate.ps1
 #        - CA techniques        -> Public/Find-LS2VulnerableCA.ps1
@@ -818,6 +818,394 @@ $script:ESCDefinitions = data {
                 "# No automated revert. Template schema version cannot be changed via script."
                 "# If you superseded this template, re-enable the old template and remove the superseding relationship."
             )
+        }
+    }
+}
+
+# ============================================================================
+# Scoring metadata for Set-LS2RiskRating
+# Defined outside data{} because data{} only allows literals and restricted syntax.
+# Keys are merged into $script:ESCDefinitions at load time.
+# ============================================================================
+$script:ESCScoringMetadata = @{
+    ESC1   = @{
+        BaseScore             = 0
+        TechniqueBonus        = 1
+        ApplyEnabledModifier  = $true
+        ApplyPrincipalRisk    = $true
+        ApplyObjectClassBonus = $false
+        ObjectClassBonuses    = @{}
+        NtAuthBonus           = 0
+        EndpointBonuses       = @{}
+        CrossESCModifiers     = @(
+            @{
+                RequiredTechniquePatterns = @('ESC5a', 'ESC5o')
+                Bonus                    = 0
+                BonusFromPrincipalRisk   = $true
+                BonusCap                 = 2
+                OnlyWhenDisabled         = $true
+                RequiredObjectClass      = 'pKIEnrollmentService'
+                OnlyEnabledMatches       = $false
+            }
+        )
+    }
+    ESC2   = @{
+        BaseScore             = 0
+        TechniqueBonus        = 0
+        ApplyEnabledModifier  = $true
+        ApplyPrincipalRisk    = $true
+        ApplyObjectClassBonus = $false
+        ObjectClassBonuses    = @{}
+        NtAuthBonus           = 0
+        EndpointBonuses       = @{}
+        CrossESCModifiers     = @(
+            @{
+                RequiredTechniquePatterns = @('ESC5a', 'ESC5o')
+                Bonus                    = 0
+                BonusFromPrincipalRisk   = $true
+                BonusCap                 = 2
+                OnlyWhenDisabled         = $true
+                RequiredObjectClass      = 'pKIEnrollmentService'
+                OnlyEnabledMatches       = $false
+            }
+            @{
+                RequiredTechniquePatterns = @('ESC15')
+                Bonus                    = 0
+                BonusFromPrincipalRisk   = $true
+                BonusCap                 = 2
+                OnlyWhenDisabled         = $false
+                RequiredObjectClass      = ''
+                OnlyEnabledMatches       = $true
+            }
+        )
+    }
+    ESC3c1 = @{
+        BaseScore             = 0
+        TechniqueBonus        = 0
+        ApplyEnabledModifier  = $true
+        ApplyPrincipalRisk    = $true
+        ApplyObjectClassBonus = $false
+        ObjectClassBonuses    = @{}
+        NtAuthBonus           = 0
+        EndpointBonuses       = @{}
+        CrossESCModifiers     = @(
+            @{
+                RequiredTechniquePatterns = @('ESC5a', 'ESC5o')
+                Bonus                    = 0
+                BonusFromPrincipalRisk   = $true
+                BonusCap                 = 2
+                OnlyWhenDisabled         = $true
+                RequiredObjectClass      = 'pKIEnrollmentService'
+                OnlyEnabledMatches       = $false
+            }
+            @{
+                RequiredTechniquePatterns = @('ESC15')
+                Bonus                    = 0
+                BonusFromPrincipalRisk   = $true
+                BonusCap                 = 2
+                OnlyWhenDisabled         = $false
+                RequiredObjectClass      = ''
+                OnlyEnabledMatches       = $true
+            }
+        )
+    }
+    ESC3c2 = @{
+        BaseScore             = 0
+        TechniqueBonus        = 0
+        ApplyEnabledModifier  = $true
+        ApplyPrincipalRisk    = $true
+        ApplyObjectClassBonus = $false
+        ObjectClassBonuses    = @{}
+        NtAuthBonus           = 0
+        EndpointBonuses       = @{}
+        CrossESCModifiers     = @(
+            @{
+                RequiredTechniquePatterns = @('ESC5a', 'ESC5o')
+                Bonus                    = 0
+                BonusFromPrincipalRisk   = $true
+                BonusCap                 = 2
+                OnlyWhenDisabled         = $true
+                RequiredObjectClass      = 'pKIEnrollmentService'
+                OnlyEnabledMatches       = $false
+            }
+            @{
+                RequiredTechniquePatterns = @('ESC3c1', 'ESC2')
+                Bonus                    = 0
+                BonusFromPrincipalRisk   = $true
+                BonusCap                 = 2
+                OnlyWhenDisabled         = $false
+                RequiredObjectClass      = ''
+                OnlyEnabledMatches       = $true
+            }
+        )
+    }
+    ESC4a  = @{
+        BaseScore             = 0
+        TechniqueBonus        = 1
+        ApplyEnabledModifier  = $true
+        ApplyPrincipalRisk    = $true
+        ApplyObjectClassBonus = $false
+        ObjectClassBonuses    = @{}
+        NtAuthBonus           = 0
+        EndpointBonuses       = @{}
+        CrossESCModifiers     = @(
+            @{
+                RequiredTechniquePatterns = @('ESC5a', 'ESC5o')
+                Bonus                    = 0
+                BonusFromPrincipalRisk   = $true
+                BonusCap                 = 2
+                OnlyWhenDisabled         = $true
+                RequiredObjectClass      = 'pKIEnrollmentService'
+                OnlyEnabledMatches       = $false
+            }
+        )
+    }
+    ESC4o  = @{
+        BaseScore             = 0
+        TechniqueBonus        = 1
+        ApplyEnabledModifier  = $true
+        ApplyPrincipalRisk    = $false
+        ApplyObjectClassBonus = $false
+        ObjectClassBonuses    = @{}
+        NtAuthBonus           = 0
+        EndpointBonuses       = @{}
+        CrossESCModifiers     = @(
+            @{
+                RequiredTechniquePatterns = @('ESC5a', 'ESC5o')
+                Bonus                    = 0
+                BonusFromPrincipalRisk   = $true
+                BonusCap                 = 2
+                OnlyWhenDisabled         = $true
+                RequiredObjectClass      = 'pKIEnrollmentService'
+                OnlyEnabledMatches       = $false
+            }
+        )
+    }
+    ESC5a  = @{
+        BaseScore             = 0
+        TechniqueBonus        = 0
+        ApplyEnabledModifier  = $false
+        ApplyPrincipalRisk    = $true
+        ApplyObjectClassBonus = $true
+        ObjectClassBonuses    = @{
+            'certificationAuthority' = 2
+            'pKIEnrollmentService'   = 2
+            'computer'               = 2
+            'msPKI-Enterprise-Oid'   = 1
+            'container'              = 1
+        }
+        NtAuthBonus           = 2
+        EndpointBonuses       = @{}
+        CrossESCModifiers     = @()
+    }
+    ESC5o  = @{
+        BaseScore             = 0
+        TechniqueBonus        = 0
+        ApplyEnabledModifier  = $false
+        ApplyPrincipalRisk    = $false
+        ApplyObjectClassBonus = $true
+        ObjectClassBonuses    = @{
+            'certificationAuthority' = 2
+            'pKIEnrollmentService'   = 2
+            'computer'               = 2
+            'msPKI-Enterprise-Oid'   = 1
+            'container'              = 1
+        }
+        NtAuthBonus           = 2
+        EndpointBonuses       = @{}
+        CrossESCModifiers     = @()
+    }
+    ESC6   = @{
+        BaseScore             = 3
+        TechniqueBonus        = 0
+        ApplyEnabledModifier  = $false
+        ApplyPrincipalRisk    = $false
+        ApplyObjectClassBonus = $false
+        ObjectClassBonuses    = @{}
+        NtAuthBonus           = 0
+        EndpointBonuses       = @{}
+        CrossESCModifiers     = @(
+            @{
+                RequiredTechniquePatterns = @('ESC9', 'ESC16')
+                Bonus                    = 2
+                BonusFromPrincipalRisk   = $false
+                BonusCap                 = 2
+                OnlyWhenDisabled         = $false
+                RequiredObjectClass      = ''
+                OnlyEnabledMatches       = $false
+            }
+        )
+    }
+    ESC7a  = @{
+        BaseScore             = 3
+        TechniqueBonus        = 0
+        ApplyEnabledModifier  = $false
+        ApplyPrincipalRisk    = $true
+        ApplyObjectClassBonus = $false
+        ObjectClassBonuses    = @{}
+        NtAuthBonus           = 0
+        EndpointBonuses       = @{}
+        CrossESCModifiers     = @()
+    }
+    ESC7m  = @{
+        BaseScore             = 3
+        TechniqueBonus        = 0
+        ApplyEnabledModifier  = $false
+        ApplyPrincipalRisk    = $true
+        ApplyObjectClassBonus = $false
+        ObjectClassBonuses    = @{}
+        NtAuthBonus           = 0
+        EndpointBonuses       = @{}
+        CrossESCModifiers     = @()
+    }
+    ESC8   = @{
+        BaseScore             = 3
+        TechniqueBonus        = 0
+        ApplyEnabledModifier  = $false
+        ApplyPrincipalRisk    = $false
+        ApplyObjectClassBonus = $false
+        ObjectClassBonuses    = @{}
+        NtAuthBonus           = 0
+        EndpointBonuses       = @{
+            'HTTP'           = 2
+            'HTTPS-NTLM'     = 2
+            'HTTPS-Kerberos' = 1
+        }
+        CrossESCModifiers     = @()
+    }
+    ESC9   = @{
+        BaseScore             = 0
+        TechniqueBonus        = 0
+        ApplyEnabledModifier  = $true
+        ApplyPrincipalRisk    = $true
+        ApplyObjectClassBonus = $false
+        ObjectClassBonuses    = @{}
+        NtAuthBonus           = 0
+        EndpointBonuses       = @{}
+        CrossESCModifiers     = @(
+            @{
+                RequiredTechniquePatterns = @('ESC5a', 'ESC5o')
+                Bonus                    = 0
+                BonusFromPrincipalRisk   = $true
+                BonusCap                 = 2
+                OnlyWhenDisabled         = $true
+                RequiredObjectClass      = 'pKIEnrollmentService'
+                OnlyEnabledMatches       = $false
+            }
+            @{
+                RequiredTechniquePatterns = @('ESC6')
+                Bonus                    = 2
+                BonusFromPrincipalRisk   = $false
+                BonusCap                 = 2
+                OnlyWhenDisabled         = $false
+                RequiredObjectClass      = ''
+                OnlyEnabledMatches       = $false
+            }
+        )
+    }
+    ESC11  = @{
+        BaseScore             = 3
+        TechniqueBonus        = 0
+        ApplyEnabledModifier  = $false
+        ApplyPrincipalRisk    = $false
+        ApplyObjectClassBonus = $false
+        ObjectClassBonuses    = @{}
+        NtAuthBonus           = 0
+        EndpointBonuses       = @{}
+        CrossESCModifiers     = @()
+    }
+    ESC13  = @{
+        BaseScore             = 0
+        TechniqueBonus        = 0
+        ApplyEnabledModifier  = $true
+        ApplyPrincipalRisk    = $true
+        ApplyObjectClassBonus = $false
+        ObjectClassBonuses    = @{}
+        NtAuthBonus           = 0
+        EndpointBonuses       = @{}
+        CrossESCModifiers     = @(
+            @{
+                RequiredTechniquePatterns = @('ESC5a', 'ESC5o')
+                Bonus                    = 0
+                BonusFromPrincipalRisk   = $true
+                BonusCap                 = 2
+                OnlyWhenDisabled         = $true
+                RequiredObjectClass      = 'pKIEnrollmentService'
+                OnlyEnabledMatches       = $false
+            }
+        )
+    }
+    ESC15  = @{
+        BaseScore             = 0
+        TechniqueBonus        = 0
+        ApplyEnabledModifier  = $true
+        ApplyPrincipalRisk    = $true
+        ApplyObjectClassBonus = $false
+        ObjectClassBonuses    = @{}
+        NtAuthBonus           = 0
+        EndpointBonuses       = @{}
+        CrossESCModifiers     = @(
+            @{
+                RequiredTechniquePatterns = @('ESC5a', 'ESC5o')
+                Bonus                    = 0
+                BonusFromPrincipalRisk   = $true
+                BonusCap                 = 2
+                OnlyWhenDisabled         = $true
+                RequiredObjectClass      = 'pKIEnrollmentService'
+                OnlyEnabledMatches       = $false
+            }
+        )
+    }
+    ESC16  = @{
+        BaseScore             = 3
+        TechniqueBonus        = 0
+        ApplyEnabledModifier  = $false
+        ApplyPrincipalRisk    = $false
+        ApplyObjectClassBonus = $false
+        ObjectClassBonuses    = @{}
+        NtAuthBonus           = 0
+        EndpointBonuses       = @{}
+        CrossESCModifiers     = @(
+            @{
+                RequiredTechniquePatterns = @('ESC6')
+                Bonus                    = 2
+                BonusFromPrincipalRisk   = $false
+                BonusCap                 = 2
+                OnlyWhenDisabled         = $false
+                RequiredObjectClass      = ''
+                OnlyEnabledMatches       = $false
+            }
+        )
+    }
+    SchemaV1 = @{
+        BaseScore             = 1
+        TechniqueBonus        = 0
+        ApplyEnabledModifier  = $true
+        ApplyPrincipalRisk    = $false
+        ApplyObjectClassBonus = $false
+        ObjectClassBonuses    = @{}
+        NtAuthBonus           = 0
+        EndpointBonuses       = @{}
+        CrossESCModifiers     = @()
+    }
+    Auditing = @{
+        BaseScore             = 3
+        TechniqueBonus        = 0
+        ApplyEnabledModifier  = $false
+        ApplyPrincipalRisk    = $false
+        ApplyObjectClassBonus = $false
+        ObjectClassBonuses    = @{}
+        NtAuthBonus           = 0
+        EndpointBonuses       = @{}
+        CrossESCModifiers     = @()
+    }
+}
+
+# Merge scoring metadata into ESCDefinitions
+foreach ($technique in $script:ESCScoringMetadata.Keys) {
+    if ($script:ESCDefinitions.ContainsKey($technique)) {
+        foreach ($scoringKey in $script:ESCScoringMetadata[$technique].Keys) {
+            $script:ESCDefinitions[$technique][$scoringKey] = $script:ESCScoringMetadata[$technique][$scoringKey]
         }
     }
 }

@@ -1,4 +1,4 @@
-function Find-LS2VulnerableTemplate {
+﻿function Find-LS2VulnerableTemplate {
     <#
     .SYNOPSIS
         Identifies vulnerable AD CS templates based on ESC technique definitions.
@@ -88,6 +88,68 @@ function Find-LS2VulnerableTemplate {
         [switch]$Rescan
     )
 
+    # Joins a config template value (Issue/Fix/Revert) that may be either a single string
+    # or an array of lines. PowerShell's -join already treats a scalar as a one-element
+    # array, so no array/scalar branching is needed here.
+    function Resolve-TemplateText {
+        param(
+            [Parameter(Mandatory)]
+            [AllowNull()]
+            [object]$Template,
+
+            [Parameter(Mandatory)]
+            [AllowEmptyString()]
+            [string]$Separator
+        )
+        return $Template -join $Separator
+    }
+
+    # Adds an issue to $script:IssueStore unless an identical issue is already present.
+    # Returns $true when the issue was added. Delegates the actual bucket-init-and-append
+    # to the existing Add-ToIssueStore utility; the bucket is still pre-created for a
+    # duplicate issue (matching prior behavior — callers can rely on the DN/Technique
+    # bucket existing once a template has been scanned, even with 0 issues in it).
+    function Add-IssueToStore {
+        param(
+            [Parameter(Mandatory)]
+            [LS2Issue]$Issue,
+
+            [Parameter(Mandatory)]
+            [string]$DistinguishedName,
+
+            [Parameter(Mandatory)]
+            [string]$Technique
+        )
+
+        if (-not $script:IssueStore) { $script:IssueStore = @{} }
+        if (-not $script:IssueStore.ContainsKey($DistinguishedName)) { $script:IssueStore[$DistinguishedName] = @{} }
+        if (-not $script:IssueStore[$DistinguishedName].ContainsKey($Technique)) { $script:IssueStore[$DistinguishedName][$Technique] = @() }
+
+        if (Test-IssueExists -Issue $Issue -DistinguishedName $DistinguishedName -Technique $Technique) {
+            return $false
+        }
+
+        Add-ToIssueStore -DistinguishedName $DistinguishedName -Technique $Technique -Issue $Issue
+        return $true
+    }
+
+    # Outputs an issue to the pipeline, expanding group principals when requested.
+    function Publish-Issue {
+        param(
+            [Parameter(Mandatory)]
+            [LS2Issue]$Issue,
+
+            [switch]$ExpandGroups
+        )
+
+        if ($ExpandGroups) {
+            Expand-IssueByGroup -Issue $Issue
+        }
+        else {
+            $Issue
+        }
+    }
+
     # Ensure stores are initialized and populated
     $initParams = @{}
     if ($PSBoundParameters.ContainsKey('Forest')) { $initParams['Forest'] = $Forest }
@@ -107,7 +169,8 @@ function Find-LS2VulnerableTemplate {
         
         if ($ExpandGroups) {
             $templateIssues | ForEach-Object { Expand-IssueByGroup $_ }
-        } else {
+        }
+        else {
             $templateIssues
         }
         return
@@ -148,6 +211,7 @@ function Find-LS2VulnerableTemplate {
     if ($Technique -eq 'ESC4a') {
         foreach ($template in $vulnerableTemplates) {
             Write-Verbose "  Checking editors on template: $($template.Name)"
+            $tamemyCertInfo = Get-TamemyCertHardening -TemplateName $template.Name
 
             # Get problematic editors based on config
             $problematicEditors = @()
@@ -185,30 +249,12 @@ function Find-LS2VulnerableTemplate {
                 Write-Verbose "    VULNERABLE: $($ace.IdentityReference) ($editorSid) has write rights"
 
                 # Get domain/forest name from DN
-                $forestName = if ($template.distinguishedName -match 'DC=([^,]+)') {
-                    $template.distinguishedName -replace '^.*?DC=(.*)$', '$1' -replace ',DC=', '.'
-                } else {
-                    'Unknown'
-                }
+                $forestName = Get-ForestNameFromDN -DistinguishedName $template.distinguishedName
 
                 # Join templates if they're arrays, then expand variables
-                $issueTemplate = if ($config.IssueTemplate -is [array]) {
-                    $config.IssueTemplate -join ''
-                } else {
-                    $config.IssueTemplate
-                }
-                
-                $fixTemplate = if ($config.FixTemplate -is [array]) {
-                    $config.FixTemplate -join "`n"
-                } else {
-                    $config.FixTemplate
-                }
-                
-                $revertTemplate = if ($config.RevertTemplate -is [array]) {
-                    $config.RevertTemplate -join "`n"
-                } else {
-                    $config.RevertTemplate
-                }
+                $issueTemplate = Resolve-TemplateText -Template $config.IssueTemplate -Separator ''
+                $fixTemplate = Resolve-TemplateText -Template $config.FixTemplate -Separator "`n"
+                $revertTemplate = Resolve-TemplateText -Template $config.RevertTemplate -Separator "`n"
 
                 # Resolve IdentityReference to NTAccount format (SID → DOMAIN\Name)
                 $identityReferenceName = ($ace.IdentityReference | Convert-IdentityReferenceToNTAccount).Value
@@ -229,14 +275,16 @@ function Find-LS2VulnerableTemplate {
                 # Get principal objectClass from PrincipalStore
                 $principalObjectClass = if ($script:PrincipalStore -and $script:PrincipalStore.ContainsKey($editorSid)) {
                     $script:PrincipalStore[$editorSid].objectClass
-                } else {
+                }
+                else {
                     $null
                 }
                 
                 # Get ACE ObjectType GUID if present
                 $aceObjectType = if ($ace.ObjectType -and $ace.ObjectType -ne [Guid]::Empty) {
                     $ace.ObjectType.ToString()
-                } else {
+                }
+                else {
                     $null
                 }
                 
@@ -246,48 +294,33 @@ function Find-LS2VulnerableTemplate {
                 
                 # Create LS2Issue object
                 $issue = [LS2Issue]@{
-                    Technique              = $technique
-                    Forest                 = $forestName
-                    Name                   = $template.Name
-                    DistinguishedName      = $template.distinguishedName
-                    ObjectClass            = 'pKICertificateTemplate'
-                    IdentityReference      = $identityReferenceName
-                    IdentityReferenceSID   = $editorSid
-                    IdentityReferenceClass = $principalObjectClass
-                    ActiveDirectoryRights  = $ace.ActiveDirectoryRights
-                    AceObjectTypeGUID      = $aceObjectType
-                    AceObjectTypeName      = $aceObjectTypeName
-                    Enabled                = $template.Enabled
-                    EnabledOn              = $template.EnabledOn
-                    Issue                  = $issueText
-                    Fix                    = $fixScript
-                    Revert                 = $revertScript
+                    Technique                  = $technique
+                    Forest                     = $forestName
+                    Name                       = $template.Name
+                    DistinguishedName          = $template.distinguishedName
+                    ObjectClass                = 'pKICertificateTemplate'
+                    IdentityReference          = $identityReferenceName
+                    IdentityReferenceSID       = $editorSid
+                    IdentityReferenceClass     = $principalObjectClass
+                    ActiveDirectoryRights      = $ace.ActiveDirectoryRights
+                    AceObjectTypeGUID          = $aceObjectType
+                    AceObjectTypeName          = $aceObjectTypeName
+                    Enabled                    = $template.Enabled
+                    EnabledOn                  = $template.EnabledOn
+                    TamemyCertHardening        = $tamemyCertInfo.TamemyCertHardening
+                    TamemyCertHardeningXmlName = $tamemyCertInfo.TamemyCertHardeningXmlName
+                    TamemyCertHardeningSummary = $tamemyCertInfo.TamemyCertHardeningSummary
+                    Issue                      = $issueText
+                    Fix                        = $fixScript
+                    Revert                     = $revertScript
                 }
 
-                # Store in IssueStore
+                # Store in IssueStore (only if not a duplicate) and always output to pipeline
                 $dn = $template.distinguishedName
-                if (-not $script:IssueStore) {
-                    $script:IssueStore = @{}
-                }
-                if (-not $script:IssueStore.ContainsKey($dn)) {
-                    $script:IssueStore[$dn] = @{}
-                }
-                if (-not $script:IssueStore[$dn].ContainsKey($Technique)) {
-                    $script:IssueStore[$dn][$Technique] = @()
-                }
-                
-                # Only add to store if not a duplicate
-                if (-not (Test-IssueExists -Issue $issue -DistinguishedName $dn -Technique $Technique)) {
-                    $script:IssueStore[$dn][$Technique] += $issue
+                if (Add-IssueToStore -Issue $issue -DistinguishedName $dn -Technique $Technique) {
                     $issueCount++
                 }
-
-                # Always output to pipeline
-                if ($ExpandGroups) {
-                    Expand-IssueByGroup -Issue $issue
-                } else {
-                    $issue
-                }
+                Publish-Issue -Issue $issue -ExpandGroups:$ExpandGroups
             }
         }
         Write-Verbose "$Technique scan complete. Found $issueCount issue(s)."
@@ -299,11 +332,13 @@ function Find-LS2VulnerableTemplate {
         foreach ($template in $vulnerableTemplates) {
             $templateName = if ($template.displayName) { $template.displayName } else { $template.Name }
             $owner = if ($template.Owner) { $template.Owner } else { 'Unknown' }
+            $tamemyCertInfo = Get-TamemyCertHardening -TemplateName $template.Name
 
             # Resolve owner SID to NTAccount format if needed (handles bare SID or O:SID SDDL format)
             $ownerToDisplay = if ($owner -match '^(?:O:)?(S-1-[\d-]+)') {
                 ([System.Security.Principal.SecurityIdentifier]::new($Matches[1]) | Convert-IdentityReferenceToNTAccount).Value
-            } else { $owner }
+            }
+            else { $owner }
 
             Write-Verbose "  Checking template: $templateName"
 
@@ -324,44 +359,29 @@ function Find-LS2VulnerableTemplate {
 
             # Create issue object
             $issue = [LS2Issue]::new(@{
-                    Technique           = $Technique
-                    Forest              = $forestName
-                    Name                = $templateName
-                    DistinguishedName   = $template.distinguishedName
-                    ObjectClass         = 'pKICertificateTemplate'
-                    Owner               = $ownerToDisplay
-                    HasNonStandardOwner = $true
-                    Enabled             = $template.Enabled
-                    EnabledOn           = $template.EnabledOn
-                    Issue               = $issueText
-                    Fix                 = $fixScript
-                    Revert              = $revertScript
+                    Technique                  = $Technique
+                    Forest                     = $forestName
+                    Name                       = $templateName
+                    DistinguishedName          = $template.distinguishedName
+                    ObjectClass                = 'pKICertificateTemplate'
+                    Owner                      = $ownerToDisplay
+                    HasNonStandardOwner        = $true
+                    Enabled                    = $template.Enabled
+                    EnabledOn                  = $template.EnabledOn
+                    TamemyCertHardening        = $tamemyCertInfo.TamemyCertHardening
+                    TamemyCertHardeningXmlName = $tamemyCertInfo.TamemyCertHardeningXmlName
+                    TamemyCertHardeningSummary = $tamemyCertInfo.TamemyCertHardeningSummary
+                    Issue                      = $issueText
+                    Fix                        = $fixScript
+                    Revert                     = $revertScript
                 })
 
-            # Store in IssueStore
+            # Store in IssueStore (only if not a duplicate) and always output to pipeline
             $dn = $template.distinguishedName
-            if (-not $script:IssueStore) {
-                $script:IssueStore = @{}
-            }
-            if (-not $script:IssueStore.ContainsKey($dn)) {
-                $script:IssueStore[$dn] = @{}
-            }
-            if (-not $script:IssueStore[$dn].ContainsKey($Technique)) {
-                $script:IssueStore[$dn][$Technique] = @()
-            }
-            
-            # Only add to store if not a duplicate
-            if (-not (Test-IssueExists -Issue $issue -DistinguishedName $dn -Technique $Technique)) {
-                $script:IssueStore[$dn][$Technique] += $issue
+            if (Add-IssueToStore -Issue $issue -DistinguishedName $dn -Technique $Technique) {
                 $issueCount++
             }
-
-            # Always output to pipeline
-            if ($ExpandGroups) {
-                Expand-IssueByGroup -Issue $issue
-            } else {
-                $issue
-            }
+            Publish-Issue -Issue $issue -ExpandGroups:$ExpandGroups
         }
         Write-Verbose "$Technique scan complete. Found $issueCount issue(s)."
         return
@@ -371,43 +391,37 @@ function Find-LS2VulnerableTemplate {
     elseif ($Technique -eq 'SchemaV1') {
         foreach ($template in $vulnerableTemplates) {
             $templateName = if ($template.displayName) { $template.displayName } else { $template.Name }
+            $tamemyCertInfo = Get-TamemyCertHardening -TemplateName $template.Name
 
             $forestName = Get-ForestNameFromDN -DistinguishedName $template.distinguishedName
 
-            $issueText = ($config.IssueTemplate -join '') `
+            $issueText = (Resolve-TemplateText -Template $config.IssueTemplate -Separator '') `
                 -replace '\$\(TemplateName\)', $templateName
 
-            $fixScript  = ($config.FixTemplate  -join "`n")
-            $revertScript = ($config.RevertTemplate -join "`n")
+            $fixScript = Resolve-TemplateText -Template $config.FixTemplate -Separator "`n"
+            $revertScript = Resolve-TemplateText -Template $config.RevertTemplate -Separator "`n"
 
             $issue = [LS2Issue]@{
-                Technique         = $Technique
-                Forest            = $forestName
-                Name              = $templateName
-                DistinguishedName = $template.distinguishedName
-                ObjectClass       = 'pKICertificateTemplate'
-                Enabled           = $template.Enabled
-                EnabledOn         = $template.EnabledOn
-                Issue             = $issueText
-                Fix               = $fixScript
-                Revert            = $revertScript
+                Technique                  = $Technique
+                Forest                     = $forestName
+                Name                       = $templateName
+                DistinguishedName          = $template.distinguishedName
+                ObjectClass                = 'pKICertificateTemplate'
+                Enabled                    = $template.Enabled
+                EnabledOn                  = $template.EnabledOn
+                TamemyCertHardening        = $tamemyCertInfo.TamemyCertHardening
+                TamemyCertHardeningXmlName = $tamemyCertInfo.TamemyCertHardeningXmlName
+                TamemyCertHardeningSummary = $tamemyCertInfo.TamemyCertHardeningSummary
+                Issue                      = $issueText
+                Fix                        = $fixScript
+                Revert                     = $revertScript
             }
 
             $dn = $template.distinguishedName
-            if (-not $script:IssueStore) { $script:IssueStore = @{} }
-            if (-not $script:IssueStore.ContainsKey($dn)) { $script:IssueStore[$dn] = @{} }
-            if (-not $script:IssueStore[$dn].ContainsKey($Technique)) { $script:IssueStore[$dn][$Technique] = @() }
-
-            if (-not (Test-IssueExists -Issue $issue -DistinguishedName $dn -Technique $Technique)) {
-                $script:IssueStore[$dn][$Technique] += $issue
+            if (Add-IssueToStore -Issue $issue -DistinguishedName $dn -Technique $Technique) {
                 $issueCount++
             }
-
-            if ($ExpandGroups) {
-                Expand-IssueByGroup -Issue $issue
-            } else {
-                $issue
-            }
+            Publish-Issue -Issue $issue -ExpandGroups:$ExpandGroups
         }
         Write-Verbose "$Technique scan complete. Found $issueCount issue(s)."
         return
@@ -416,6 +430,7 @@ function Find-LS2VulnerableTemplate {
     # Standard enrollee-based detection for other ESC techniques
     foreach ($template in $vulnerableTemplates) {
         Write-Verbose "  Checking enrollees on template: $($template.Name)"
+        $tamemyCertInfo = Get-TamemyCertHardening -TemplateName $template.Name
 
         # Get problematic enrollees based on config
         $problematicEnrollees = @()
@@ -453,30 +468,12 @@ function Find-LS2VulnerableTemplate {
             Write-Verbose "    VULNERABLE: $($ace.IdentityReference) ($enrolleeSid) has enrollment rights"
 
             # Get domain/forest name from DN
-            $forestName = if ($template.distinguishedName -match 'DC=([^,]+)') {
-                $template.distinguishedName -replace '^.*?DC=(.*)$', '$1' -replace ',DC=', '.'
-            } else {
-                'Unknown'
-            }
+            $forestName = Get-ForestNameFromDN -DistinguishedName $template.distinguishedName
 
             # Join templates if they're arrays, then expand variables
-            $issueTemplate = if ($config.IssueTemplate -is [array]) {
-                $config.IssueTemplate -join ''
-            } else {
-                $config.IssueTemplate
-            }
-            
-            $fixTemplate = if ($config.FixTemplate -is [array]) {
-                $config.FixTemplate -join "`n"
-            } else {
-                $config.FixTemplate
-            }
-            
-            $revertTemplate = if ($config.RevertTemplate -is [array]) {
-                $config.RevertTemplate -join "`n"
-            } else {
-                $config.RevertTemplate
-            }
+            $issueTemplate = Resolve-TemplateText -Template $config.IssueTemplate -Separator ''
+            $fixTemplate = Resolve-TemplateText -Template $config.FixTemplate -Separator "`n"
+            $revertTemplate = Resolve-TemplateText -Template $config.RevertTemplate -Separator "`n"
 
             # Resolve IdentityReference to NTAccount format (SID → DOMAIN\Name)
             $identityReferenceName = ($ace.IdentityReference | Convert-IdentityReferenceToNTAccount).Value
@@ -484,7 +481,8 @@ function Find-LS2VulnerableTemplate {
             # Expand template variables in Issue, Fix, and Revert strings
             $linkedGroup = if ($template.LinkedGroupOIDPolicies -and $template.LinkedGroupOIDPolicies.Count -gt 0) {
                 $template.LinkedGroupOIDPolicies -join ', '
-            } else {
+            }
+            else {
                 ''
             }
 
@@ -502,52 +500,38 @@ function Find-LS2VulnerableTemplate {
             # Get principal objectClass from PrincipalStore
             $principalObjectClass = if ($script:PrincipalStore -and $script:PrincipalStore.ContainsKey($enrolleeSid)) {
                 $script:PrincipalStore[$enrolleeSid].objectClass
-            } else {
+            }
+            else {
                 $null
             }
 
             # Create LS2Issue object
             $issue = [LS2Issue]@{
-                Technique             = $technique
-                Forest                = $forestName
-                Name                  = $template.Name
-                DistinguishedName     = $template.distinguishedName
-                ObjectClass           = 'pKICertificateTemplate'
-                IdentityReference     = $identityReferenceName
-                IdentityReferenceSID  = $enrolleeSid
-                IdentityReferenceClass = $principalObjectClass
-                ActiveDirectoryRights = $ace.ActiveDirectoryRights
-                Enabled               = $template.Enabled
-                EnabledOn             = $template.EnabledOn
-                Issue                 = $issueText
-                Fix                   = $fixScript
-                Revert                = $revertScript
+                Technique                  = $technique
+                Forest                     = $forestName
+                Name                       = $template.Name
+                DistinguishedName          = $template.distinguishedName
+                ObjectClass                = 'pKICertificateTemplate'
+                IdentityReference          = $identityReferenceName
+                IdentityReferenceSID       = $enrolleeSid
+                IdentityReferenceClass     = $principalObjectClass
+                ActiveDirectoryRights      = $ace.ActiveDirectoryRights
+                Enabled                    = $template.Enabled
+                EnabledOn                  = $template.EnabledOn
+                TamemyCertHardening        = $tamemyCertInfo.TamemyCertHardening
+                TamemyCertHardeningXmlName = $tamemyCertInfo.TamemyCertHardeningXmlName
+                TamemyCertHardeningSummary = $tamemyCertInfo.TamemyCertHardeningSummary
+                Issue                      = $issueText
+                Fix                        = $fixScript
+                Revert                     = $revertScript
             }
 
-            # Initialize IssueStore structure if needed
+            # Store in IssueStore (only if not a duplicate) and always output to pipeline
             $dn = $template.distinguishedName
-            if (-not $script:IssueStore) {
-                $script:IssueStore = @{}
-            }
-            if (-not $script:IssueStore.ContainsKey($dn)) {
-                $script:IssueStore[$dn] = @{}
-            }
-            if (-not $script:IssueStore[$dn].ContainsKey($technique)) {
-                $script:IssueStore[$dn][$technique] = @()
-            }
-            
-            # Only add to store if not a duplicate
-            if (-not (Test-IssueExists -Issue $issue -DistinguishedName $dn -Technique $technique)) {
-                $script:IssueStore[$dn][$technique] += $issue
+            if (Add-IssueToStore -Issue $issue -DistinguishedName $dn -Technique $Technique) {
                 $issueCount++
             }
-
-            # Always output to pipeline
-            if ($ExpandGroups) {
-                Expand-IssueByGroup -Issue $issue
-            } else {
-                $issue
-            }
+            Publish-Issue -Issue $issue -ExpandGroups:$ExpandGroups
         }
     }
 
